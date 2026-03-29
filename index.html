@@ -44,16 +44,15 @@
 </div>
 
 <script>
-    // --- THE CORS BYPASS SCRIPT ---
-    // We override the native fetch to wrap ORK requests in a proxy
-    const originalFetch = window.fetch;
-    window.fetch = function() {
-        let url = arguments[0];
-        if (typeof url === 'string' && url.includes('amtgard.com')) {
-            arguments[0] = "https://corsproxy.io/?url=" + encodeURIComponent(url);
-        }
-        return originalFetch.apply(this, arguments);
-    };
+// This "intercepts" jsork's calls and routes them through a proxy
+const originalFetch = window.fetch;
+window.fetch = function() {
+    let url = arguments[0];
+    if (typeof url === 'string' && url.includes('amtgard.com')) {
+        arguments[0] = "https://corsproxy.io/?url=" + encodeURIComponent(url);
+    }
+    return originalFetch.apply(this, arguments);
+};
 
     // --- LOAD JSORK DYNAMICALLY ---
     const loadJsork = () => {
