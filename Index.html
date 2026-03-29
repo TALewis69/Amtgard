@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amtgard Player Lookup</title>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://kenwalker.github.io/jsork/jsork.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f4f7f6; color: #333; display: flex; justify-content: center; }
+        .container { max-width: 400px; width: 100%; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-top: 50px; }
+        h2 { margin-top: 0; font-size: 1.4rem; color: #2c3e50; text-align: center; }
+        
+        .search-box { display: flex; gap: 8px; margin: 20px 0; }
+        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; outline: none; }
+        input:focus { border-color: #007bff; }
+        button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; }
+
+        #status { font-size: 0.9rem; text-align: center; margin-bottom: 10px; color: #666; display: none; }
+        
+        .info-card { background: #fafafa; border: 1px solid #eee; padding: 20px; border-radius: 10px; display: none; }
+        .label { font-size: 0.7rem; text-transform: uppercase; color: #95a5a6; font-weight: bold; display: block; margin-top: 12px; }
+        .value { font-size: 1.1rem; color: #2c3e50; display: block; font-weight: 500; }
+        .badge { display: inline-block; background: #28a745; color: white; padding: 2px 10px; border-radius: 20px; font-size: 0.85rem; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>ORK Player Lookup</h2>
+    
+    <div class="search-box">
+        <input type="number" id="playerID" value="43232" placeholder="Enter Player ID">
+        <button id="searchBtn" onclick="lookup()">Search</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="output" class="info-card">
+        <span class="label">Persona</span>
+        <span id="p-name" class="value"></span>
+        
+        <span class="label">Park</span>
+        <span id="p-park" class="value">Loading...</span>
+
+        <span class="label">Kingdom</span>
+        <span id="p-kingdom" class="value">Loading...</span>
+
+        <span class="label">Total Attendance</span>
+        <span id="p-attendance" class="badge">0</span>
+    </div>
+</div>
+
+<script>
+    async function lookup() {
+        const id = document.getElementById('playerID').value;
+        const out = document.getElementById('output');
+        const status = document.getElementById('status');
+        const btn = document.getElementById('searchBtn');
+
+        // Reset UI
+        out.style.display = 'none';
+        status.style.display = 'block';
+        status.textContent = "Searching ORK...";
+        btn.disabled = true;
+
+        try {
+            // 1. Get Summary
+            const player = await jsork.player.getPlayerSummary(id);
+            
+            if (!player || (!player.Persona && !player.MundaneId)) {
+                throw new Error("Player not found.");
+            }
+
+            // Show immediate data
+            document.getElementById('p-name').textContent = player.Persona || "No Persona";
+            document.getElementById('p-attendance').textContent = player.AttendanceCount || player.TotalAttendance || "0";
+            out.style.display = 'block';
+            status.style.display = 'none';
+
+            // 2. Resolve Park (Hunter Logic)
+            if (player.ParkName) {
+                document.getElementById('p-park').textContent = player.ParkName;
+            } else if (player.ParkId) {
+                const parkData = await jsork.park.getPark(player.ParkId);
+                document.getElementById('p-park').textContent = parkData.Name || "Park " + player.ParkId;
+            }
+
+            // 3. Resolve Kingdom (Hunter Logic)
+            if (player.KingdomName) {
+                document.getElementById('p-kingdom').textContent = player.KingdomName;
+            } else if (player.KingdomId) {
+                const kingdomData = await jsork.kingdom.getKingdom(player.KingdomId);
+                document.getElementById('p-kingdom').textContent = kingdomData.Name || "Kingdom " + player.KingdomId;
+            }
+
+        } catch (err) {
+            status.textContent = "Error: " + err.message;
+            status.style.color = "red";
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // Support for Enter Key
+    document.getElementById('playerID').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') lookup();
+    });
+</script>
+
+</body>
+</html>
