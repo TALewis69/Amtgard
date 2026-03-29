@@ -7,34 +7,30 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
-        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        h1 { color: var(--primary); margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
+        h1 { color: var(--primary); border-bottom: 2px solid #333; padding-bottom: 10px; }
         .controls { display: flex; gap: 10px; margin: 20px 0; }
-        input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; font-size: 1rem; }
-        button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; transition: background 0.2s; }
-        button:hover { background: #27ae60; }
-        #status { color: #f1c40f; margin-bottom: 15px; display: none; font-style: italic; background: rgba(241, 196, 15, 0.1); padding: 10px; border-left: 4px solid #f1c40f; }
-        table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 20px; font-size: 0.95em; }
+        input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; }
+        button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; }
+        #status { color: #f1c40f; margin-bottom: 15px; display: none; font-style: italic; background: rgba(241, 196, 15, 0.1); padding: 15px; border-left: 4px solid #f1c40f; }
+        table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #383838; }
-        th { background: #333; color: var(--primary); text-transform: uppercase; font-size: 0.8rem; }
+        th { background: #333; color: var(--primary); }
         .active { color: var(--primary); font-weight: bold; }
         .mia { color: #e74c3c; }
-        tr:hover { background: #2d2d2d; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>⚔️ Unit Activity Auditor</h1>
-    <p>Live roster generation and 90-day attendance tracking.</p>
-    
     <div class="controls">
         <input type="number" id="unitId" placeholder="Enter Unit ID (e.g., 47)">
         <button id="runBtn">Generate Report</button>
     </div>
 
-    <div id="status">📡 Establishing connection to the ORK archives...</div>
+    <div id="status">📡 Establishing secure bridge...</div>
 
     <table id="reportTable" style="display:none;">
         <thead>
@@ -51,24 +47,20 @@
 </div>
 
 <script>
-    const API_BASE = "https://ork.amtgard.com/orkinterface/api/api.php?call=";
+    // --- NO MORE corsproxy.io ---
+    // --- NO MORE GetUnitIndex ---
 
-    /**
-     * ORK API CALLER
-     * Uses allorigins.win to bypass CORS and CORB.
-     * The proxy wraps the response in a 'contents' string which we parse.
-     */
     async function orkCall(callPath, params = "") {
-        const url = `${API_BASE}${callPath}${params}&ts=${Date.now()}`;
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        // We use allorigins.win to bypass the 403 Forbidden error
+        const orkUrl = `https://ork.amtgard.com/orkinterface/api/api.php?call=${callPath}${params}&ts=${Date.now()}`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(orkUrl)}`;
 
         const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Proxy Server Error");
+        if (!response.ok) throw new Error("Proxy Error");
         
-        const wrapper = await response.json();
-        if (!wrapper.contents) throw new Error("No data received from proxy.");
-        
-        return JSON.parse(wrapper.contents);
+        const data = await response.json();
+        // The data comes back as a string in 'contents', we turn it back into an object
+        return JSON.parse(data.contents);
     }
 
     document.getElementById('runBtn').addEventListener('click', async () => {
@@ -79,16 +71,54 @@
 
         if (!id) return alert("Please enter a Unit ID.");
         
-        // Reset UI
         status.style.display = 'block';
-        status.innerText = "📡 Requesting data from the ORK archives...";
+        status.innerText = "📡 Querying ORK Roster... (Please wait)";
         table.style.display = 'none';
         tbody.innerHTML = '';
 
         try {
-            // STEP 1: Fetch the Roster
-            const rosterResponse = await orkCall("Unit/GetUnitRoster", `&request[UnitId]=${id}`);
+            // STEP 1: Get the Roster directly
+            const rosterData = await orkCall("Unit/GetUnitRoster", `&request[UnitId]=${id}`);
             
-            if (!rosterResponse || !rosterResponse.Roster || rosterResponse.Roster.length === 0) {
+            if (!rosterData || !rosterData.Roster || rosterData.Roster.length === 0) {
                 throw new Error("Unit not found or Roster is empty.");
             }
+
+            const members = rosterData.Roster;
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+            // STEP 2: Process Members
+            for (let m of members) {
+                try {
+                    const attData = await orkCall("Player/GetAttendance", `&request[MundaneId]=${m.MundaneId}`);
+                    const attendance = attData.Attendance || [];
+                    
+                    const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
+                    const isActive = attendance.some(a => new Date(a.Date) > ninetyDaysAgo);
+
+                    const row = `<tr>
+                        <td><strong>${m.Persona || 'Unknown'}</strong></td>
+                        <td>${m.UnitRole || 'Member'}</td>
+                        <td>${attendance.length}</td>
+                        <td>${lastDate}</td>
+                        <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
+                    </tr>`;
+                    tbody.insertAdjacentHTML('beforeend', row);
+                } catch (err) {
+                    console.warn("Skipping individual member data error.");
+                }
+            }
+
+            status.style.display = 'none';
+            table.style.display = 'table';
+
+        } catch (e) {
+            console.error(e);
+            status.innerHTML = `❌ <strong>Error:</strong> ${e.message}`;
+        }
+    });
+</script>
+
+</body>
+</html>
