@@ -48,11 +48,11 @@
 
         $result.hide();
         $btn.prop('disabled', true);
-        $status.text("Requesting via JSONP (Bypassing CORS)...").css('color', '#007bff');
+        $status.text("Requesting via JSONP...").css('color', '#007bff');
 
         // We use jQuery's AJAX with 'jsonp' datatype. 
         // This tells the ORK to wrap the response in a function call, 
-        // which the browser accepts as a standard script.
+        // which the browser accepts as a standard script, bypassing CORS.
         $.ajax({
             url: "https://ork.amtgard.com/orkinterface/api/index.php",
             dataType: "jsonp",
@@ -62,9 +62,10 @@
             },
             success: function(data) {
                 if (data && data.Status && data.Status.Status === 0) {
-                    $('#persona').text(data.Player.Persona || "No Persona");
-                    $('#park').text(data.Player.ParkName || "No Park");
-                    $('#kingdom').text(data.Player.KingdomName || "No Kingdom");
+                    const p = data.Player;
+                    $('#persona').text(p.Persona || "No Persona");
+                    $('#park').text(p.ParkName || "No Park");
+                    $('#kingdom').text(p.KingdomName || "No Kingdom");
                     
                     $status.hide();
                     $result.show();
