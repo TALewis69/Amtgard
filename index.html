@@ -29,7 +29,132 @@
         <button id="runBtn">Generate Roster</button>
     </div>
     <div id="status">📡 Connecting to Google Bridge...</div>
-    <table id="reportTable" style="display:none;">
+    <table id="reportTable" style="display:none;"><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amtgard Unit Auditor</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+        .container { max-width: 900px; margin: auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
+        h1 { color: var(--primary); border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; }
+        button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; }
+        #status { color: #f1c40f; margin-bottom: 15px; display: none; padding: 15px; background: rgba(241, 196, 15, 0.1); border-left: 4px solid #f1c40f; }
+        table { width: 100%; border-collapse: collapse; display: none; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
+        th { color: var(--primary); text-transform: uppercase; font-size: 0.8rem; }
+        .active { color: var(--primary); font-weight: bold; }
+        .mia { color: #e74c3c; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>⚔️ Unit Activity Auditor</h1>
+    <div class="controls">
+        <input type="number" id="unitId" placeholder="Enter Unit ID (e.g., 47)">
+        <button id="runBtn">Generate Roster</button>
+    </div>
+    <div id="status">📡 Establishing Connection...</div>
+    <table id="reportTable">
+        <thead>
+            <tr>
+                <th>Persona</th>
+                <th>Role</th>
+                <th>Credits</th>
+                <th>Last Seen</th>
+                <th>90-Day Status</th>
+            </tr>
+        </thead>
+        <tbody id="reportBody"></tbody>
+    </table>
+</div>
+
+<script>
+    // Using a direct Cors-Proxy that doesn't require a Google Script Setup
+    var PROXY = "https://corsproxy.io/?url=";
+
+    function orkCall(callPath, params, callback) {
+        var orkUrl = "https://ork.amtgard.com/orkinterface/api/api.php?call=" + callPath + params + "&ts=" + Date.now();
+        var finalUrl = PROXY + encodeURIComponent(orkUrl);
+
+        fetch(finalUrl)
+            .then(function(res) { return res.json(); })
+            .then(function(data) { callback(data); })
+            .catch(function(err) {
+                console.error("Fetch Error:", err);
+                document.getElementById('status').innerText = "❌ Proxy is busy. Please wait 10 seconds and try again.";
+            });
+    }
+
+    document.getElementById('runBtn').onclick = function() {
+        var id = document.getElementById('unitId').value;
+        var status = document.getElementById('status');
+        var tbody = document.getElementById('reportBody');
+        var table = document.getElementById('reportTable');
+
+        if (!id) return alert("Please enter a Unit ID.");
+
+        status.style.display = 'block';
+        status.innerText = "📡 Fetching Unit Roster from ORK...";
+        table.style.display = 'none';
+        tbody.innerHTML = "";
+
+        orkCall("Unit/GetUnitRoster", "&request[UnitId]=" + id, function(data) {
+            if (!data || !data.Roster) {
+                status.innerText = "❌ Unit not found or Roster is private.";
+                return;
+            }
+
+            var members = data.Roster;
+            var ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+            var processMember = function(idx) {
+                if (idx >= members.length) {
+                    status.style.display = 'none';
+                    table.style.display = 'table';
+                    return;
+                }
+
+                var m = members[idx];
+                orkCall("Player/GetAttendance", "&request[MundaneId]=" + m.MundaneId, function(attData) {
+                    var attendance = attData.Attendance || [];
+                    var lastDate = attendance.length > 0 ? attendance[0].Date : "None";
+                    
+                    var isActive = false;
+                    for (var i = 0; i < attendance.length; i++) {
+                        if (new Date(attendance[i].Date) > ninetyDaysAgo) {
+                            isActive = true;
+                            break;
+                        }
+                    }
+
+                    var row = "<tr>" +
+                        "<td><strong>" + (m.Persona || 'Unknown') + "</strong></td>" +
+                        "<td>" + (m.UnitRole || 'Member') + "</td>" +
+                        "<td>" + attendance.length + "</td>" +
+                        "<td>" + lastDate + "</td>" +
+                        "<td class='" + (isActive ? "active" : "mia") + "'>" + (isActive ? "ACTIVE" : "MIA") + "</td>" +
+                    "</tr>";
+                    
+                    tbody.insertAdjacentHTML('beforeend', row);
+                    processMember(idx + 1);
+                });
+            };
+
+            processMember(0);
+        });
+    };
+</script>
+
+</body>
+</html>
         <thead>
             <tr>
                 <th>Persona</th>
