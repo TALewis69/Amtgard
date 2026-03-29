@@ -53,13 +53,16 @@
 
         $.ajax({
             url: finalUrl,
-            dataType: 'jsonp', // This is the magic fix for "Connection Failed"
+            dataType: 'jsonp', // The browser treats this as a script load
+            crossDomain: true,
+            cache: false,
             success: function(data) {
                 callback(data);
             },
             error: function(xhr, status, error) {
                 console.error("Bridge Error:", status, error);
-                document.getElementById('status').innerHTML = "❌ Bridge Error. Please ensure the Google Script is Deployed as a New Version.";
+                // If it still says parsererror, the Google Script version didn't update!
+                document.getElementById('status').innerHTML = "❌ Connection Error. Ensure Google Script is set to 'New Version'.";
             }
         });
     }
