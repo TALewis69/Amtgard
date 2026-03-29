@@ -1,63 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amtgard Unit Auditor (Hybrid Bridge)</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
-        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
-        h1 { color: var(--primary); border-bottom: 2px solid #333; padding-bottom: 10px; }
-        .controls { display: flex; gap: 10px; margin: 20px 0; }
-        input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; }
-        button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; }
-        #status { color: #f1c40f; margin-bottom: 15px; display: none; padding: 15px; border-left: 4px solid #f1c40f; background: rgba(241, 196, 15, 0.1); }
-        table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 20px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #383838; }
-        th { background: #333; color: var(--primary); }
-        .active { color: var(--primary); font-weight: bold; }
-        .mia { color: #e74c3c; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h1>⚔️ Unit Auditor</h1>
-    <div class="controls">
-        <input type="number" id="unitId" placeholder="Enter Unit ID (e.g., 47)">
-        <button id="runBtn">Generate Report</button>
-    </div>
-    <div id="status">📡 Establishing Connection...</div>
-    <table id="reportTable" style="display:none;">
-        <thead>
-            <tr>
-                <th>Persona</th>
-                <th>Role</th>
-                <th>Total Credits</th>
-                <th>Last Date</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="reportBody"></tbody>
-    </table>
-</div>
-
 <script>
-    // Hybrid Proxy Logic
-    async function fetchWithRetry(orkUrl) {
-        // Attempt 1: AllOrigins (Wrapped)
-        try {
-            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(orkUrl)}`);
-            const json = await res.json();
-            return JSON.parse(json.contents);
-        } catch (e) {
-            console.warn("Primary Proxy failed, attempting backup...");
-            // Attempt 2: ThingProxy (A clean bypass bridge)
-            const res = await fetch(`https://thingproxy.freeboard.io/fetch/${orkUrl}`);
-            return await res.json();
-        }
+    https://script.google.com/macros/s/AKfycbyiqB5ORyCjLxKQwvMVd21GcSolpJOrYHYX63cg6AGfEoC7xQpWNgXli0-mnzy8e_Qj/exec
+    const PROXY_URL = "YOUR_GOOGLE_SCRIPT_URL_HERE";
+
+    async function orkCall(callPath, params = "") {
+        const orkUrl = `https://ork.amtgard.com/orkinterface/api/api.php?call=${callPath}${params}&ts=${Date.now()}`;
+        const finalUrl = `${PROXY_URL}?url=${encodeURIComponent(orkUrl)}`;
+
+        const response = await fetch(finalUrl);
+        return await response.json();
     }
 
     document.getElementById('runBtn').addEventListener('click', async () => {
@@ -69,26 +19,23 @@
         if (!id) return alert("Please enter a Unit ID.");
         
         status.style.display = 'block';
-        status.innerText = "📡 Fetching Roster... This may take a minute for large units.";
+        status.innerText = "📡 Using Private Bridge to ORK... (This is much more reliable)";
         table.style.display = 'none';
         tbody.innerHTML = '';
 
         try {
-            const rosterPath = `https://ork.amtgard.com/orkinterface/api/api.php?call=Unit/GetUnitRoster&request[UnitId]=${id}&ts=${Date.now()}`;
-            const data = await fetchWithRetry(rosterPath);
-            
-            if (!data.Roster || data.Roster.length === 0) throw new Error("No members found.");
+            const rosterData = await orkCall("Unit/GetUnitRoster", `&request[UnitId]=${id}`);
+            if (!rosterData.Roster) throw new Error("Unit not found.");
 
-            for (let m of data.Roster) {
+            for (let m of rosterData.Roster) {
                 try {
-                    const attPath = `https://ork.amtgard.com/orkinterface/api/api.php?call=Player/GetAttendance&request[MundaneId]=${m.MundaneId}&ts=${Date.now()}`;
-                    const attData = await fetchWithRetry(attPath);
+                    const attData = await orkCall("Player/GetAttendance", `&request[MundaneId]=${m.MundaneId}`);
                     const attendance = attData.Attendance || [];
-                    
                     const ninetyDaysAgo = new Date();
                     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-                    const isActive = attendance.some(a => new Date(a.Date) > ninetyDaysAgo);
+                    
                     const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
+                    const isActive = attendance.some(a => new Date(a.Date) > ninetyDaysAgo);
 
                     tbody.insertAdjacentHTML('beforeend', `
                         <tr>
@@ -99,14 +46,12 @@
                             <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
                         </tr>
                     `);
-                } catch (err) { console.error("Skipping player..."); }
+                } catch (e) { console.warn("Player skip"); }
             }
             status.style.display = 'none';
             table.style.display = 'table';
         } catch (e) {
-            status.innerHTML = `❌ <strong>CORS Error:</strong> Proxies are currently overloaded. <br>Please wait 60 seconds and try again.`;
+            status.innerHTML = `❌ Error: ${e.message}. Did you set the Google Script to 'Anyone' access?`;
         }
     });
 </script>
-</body>
-</html>
