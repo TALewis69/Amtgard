@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ORK Player Lookup</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; display: flex; justify-content: center; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; margin-top: 40px; }
@@ -14,7 +15,7 @@
         .result { border-top: 1px solid #eee; padding-top: 20px; display: none; }
         .label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: bold; display: block; }
         .value { font-size: 18px; color: #333; display: block; margin-bottom: 12px; }
-        #status-msg { text-align: center; font-size: 12px; margin-top: 10px; color: #666; font-family: monospace; white-space: pre-wrap; overflow-wrap: break-word; }
+        #status-msg { text-align: center; font-size: 13px; margin-top: 10px; color: #666; }
     </style>
 </head>
 <body>
@@ -39,54 +40,51 @@
 </div>
 
 <script>
-    async function fetchPlayer() {
-        const id = document.getElementById('idInput').value;
-        const resultBox = document.getElementById('resultBox');
-        const status = document.getElementById('status-msg');
-        const btn = document.getElementById('searchBtn');
+    function fetchPlayer() {
+        const id = $('#idInput').val();
+        const $status = $('#status-msg');
+        const $btn = $('#searchBtn');
+        const $result = $('#resultBox');
 
-        resultBox.style.display = 'none';
-        btn.disabled = true;
-        status.textContent = "Connecting to ORK via Proxy...";
-        status.style.color = "#007bff";
+        $result.hide();
+        $btn.prop('disabled', true);
+        $status.text("Requesting via JSONP (Bypassing CORS)...").css('color', '#007bff');
 
-        const orkUrl = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
-        
-        // SWITCHED PROXY: Using corsproxy.io instead of AllOrigins
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(orkUrl)}`;
-
-        try {
-            const response = await fetch(proxyUrl);
-            const text = await response.text(); // Get raw text first to check if it's HTML or JSON
-
-            if (text.trim().startsWith("<!DOCTYPE")) {
-                throw new Error("The ORK blocked the request with a security page. Try again in 5 minutes.");
+        // We use jQuery's AJAX with 'jsonp' datatype. 
+        // This tells the ORK to wrap the response in a function call, 
+        // which the browser accepts as a standard script.
+        $.ajax({
+            url: "https://ork.amtgard.com/orkinterface/api/index.php",
+            dataType: "jsonp",
+            data: {
+                call: "Player/GetPlayerSummary",
+                request: { MundaneId: id }
+            },
+            success: function(data) {
+                if (data && data.Status && data.Status.Status === 0) {
+                    $('#persona').text(data.Player.Persona || "No Persona");
+                    $('#park').text(data.Player.ParkName || "No Park");
+                    $('#kingdom').text(data.Player.KingdomName || "No Kingdom");
+                    
+                    $status.hide();
+                    $result.show();
+                } else {
+                    $status.text("Error: Player ID not found.").css('color', 'red').show();
+                }
+            },
+            error: function(xhr, status, error) {
+                $status.text("Security Block: The ORK is refusing connections from GitHub.").css('color', 'red').show();
+                console.error("Error Detail:", error);
+            },
+            complete: function() {
+                $btn.prop('disabled', false);
             }
-
-            const data = JSON.parse(text);
-
-            if (data && data.Status && data.Status.Status === 0) {
-                const p = data.Player;
-                document.getElementById('persona').textContent = p.Persona || "No Persona";
-                document.getElementById('park').textContent = p.ParkName || "No Park";
-                document.getElementById('kingdom').textContent = p.KingdomName || "No Kingdom";
-                
-                status.style.display = 'none';
-                resultBox.style.display = 'block';
-            } else {
-                throw new Error("ORK Error: " + (data.Status ? data.Status.ErrorMsg : "Unknown"));
-            }
-        } catch (err) {
-            console.error(err);
-            status.style.color = "red";
-            status.textContent = "Search Failed: " + err.message;
-        } finally {
-            btn.disabled = false;
-        }
+        });
     }
 
-    document.getElementById('idInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') fetchPlayer();
+    // Support Enter key
+    $('#idInput').on('keypress', function(e) {
+        if (e.which === 13) fetchPlayer();
     });
 </script>
 </body>
