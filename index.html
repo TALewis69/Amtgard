@@ -2,61 +2,81 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Amtgard Unit Auditor (Bypass Version)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amtgard Unit Auditor</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #1a1a1a; color: #eee; }
-        .container { max-width: 900px; margin: auto; background: #252525; padding: 20px; border-radius: 10px; border: 1px solid #444; }
-        input { padding: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; }
-        button { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #2ecc71; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #2d2d2d; }
-        th, td { padding: 12px; border: 1px solid #444; text-align: left; }
-        th { background: #111; color: #27ae60; }
-        .loading { color: #f1c40f; display: none; margin: 15px 0; }
-        .status-active { color: #2ecc71; font-weight: bold; }
-        .status-mia { color: #e74c3c; }
+        :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; line-height: 1.6; }
+        .container { max-width: 1000px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
+        h1 { color: var(--primary); margin-top: 0; display: flex; align-items: center; gap: 10px; }
+        .controls { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 20px; }
+        input { padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; font-size: 1rem; }
+        button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
+        button:hover { opacity: 0.8; }
+        #searchBar { width: 100%; margin-bottom: 20px; display: none; border-color: var(--primary); }
+        #status { color: #f1c40f; margin-bottom: 15px; display: none; font-style: italic; }
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: #252525; }
+        th, td { padding: 14px; text-align: left; border-bottom: 1px solid #383838; }
+        th { background: #333; color: var(--primary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; position: sticky; top: 0; }
+        .active { color: var(--primary); font-weight: bold; }
+        .mia { color: #e74c3c; }
+        tr:hover { background: #2d2d2d; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Unit Roster & Attendance Auditor</h2>
-    <p>Enter the <strong>Unit ID</strong> (e.g., 52815) to pull live data from the ORK:</p>
+    <h1>⚔️ Unit Activity Auditor</h1>
+    <p>Live roster generation and 90-day attendance tracking via the Amtgard ORK.</p>
     
-    <input type="number" id="unitId" placeholder="Unit ID">
-    <button id="runBtn">Generate Report</button>
+    <div class="controls">
+        <input type="number" id="unitId" placeholder="Enter Unit ID (e.g., 52815)">
+        <button id="runBtn">Generate Report</button>
+    </div>
 
-    <div id="loader" class="loading">📡 Connecting to ORK via Proxy... (Large units may take 30s)</div>
+    <input type="text" id="searchBar" placeholder="Filter roster by Persona or Role..." onkeyup="filterTable()">
 
-    <table id="reportTable" style="display:none;">
-        <thead>
-            <tr>
-                <th>Persona</th>
-                <th>Role</th>
-                <th>90-Day Credits</th>
-                <th>Last Seen</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="reportBody"></tbody>
-    </table>
+    <div id="status">📡 Connecting to the Great Library...</div>
+
+    <div class="table-wrapper">
+        <table id="reportTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Persona</th>
+                    <th>Role</th>
+                    <th>Total Credits</th>
+                    <th>Last Seen</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-// This "intercepts" jsork's calls and routes them through a proxy
-const originalFetch = window.fetch;
-window.fetch = function() {
-    let url = arguments[0];
-    if (typeof url === 'string' && url.includes('amtgard.com')) {
-        arguments[0] = "https://corsproxy.io/?url=" + encodeURIComponent(url);
-    }
-    return originalFetch.apply(this, arguments);
-};
+    /** * CORS BYPASS
+     * Required even on GitHub Pages because the ORK doesn't permit 
+     * cross-origin requests from external domains.
+     */
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        let url = arguments[0];
+        if (typeof url === 'string' && url.includes('amtgard.com')) {
+            arguments[0] = "https://corsproxy.io/?url=" + encodeURIComponent(url);
+        }
+        return originalFetch.apply(this, arguments);
+    };
 
-    // --- LOAD JSORK DYNAMICALLY ---
+    /**
+     * JSORK LOADER
+     */
     const loadJsork = () => {
         return new Promise((resolve) => {
+            if (window.jsork) return resolve();
             const script = document.createElement('script');
             script.src = "https://cdn.jsdelivr.net/gh/Deitrick/jsork/jsork.js";
             script.onload = () => resolve();
@@ -64,20 +84,25 @@ window.fetch = function() {
         });
     };
 
+    /**
+     * MAIN REPORT LOGIC
+     */
     document.getElementById('runBtn').addEventListener('click', async () => {
         const id = document.getElementById('unitId').value;
-        const loader = document.getElementById('loader');
+        const status = document.getElementById('status');
         const tbody = document.getElementById('reportBody');
         const table = document.getElementById('reportTable');
+        const search = document.getElementById('searchBar');
 
-        if (!id) return alert("Please enter a Unit ID");
+        if (!id) return alert("Please enter a Unit ID.");
 
-        loader.style.display = 'block';
+        status.style.display = 'block';
         table.style.display = 'none';
+        search.style.display = 'none';
         tbody.innerHTML = '';
 
         try {
-            await loadJsork(); // Ensure jsork is ready
+            await loadJsork();
             
             const members = await jsork.unit.getUnitPlayers(id);
             const ninetyDaysAgo = new Date();
@@ -86,26 +111,44 @@ window.fetch = function() {
             for (let m of members) {
                 const attendance = await jsork.player.getAttendance(m.MundaneId);
                 const recent = attendance.filter(a => new Date(a.Date) > ninetyDaysAgo);
-                const lastDate = attendance.length > 0 ? attendance[0].Date : "Never";
+                const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
                 const isActive = recent.length > 0;
 
                 const row = `<tr>
                     <td><strong>${m.Persona}</strong></td>
                     <td>${m.UnitRole || 'Member'}</td>
-                    <td>${recent.length}</td>
+                    <td>${attendance.length}</td>
                     <td>${lastDate}</td>
-                    <td class="${isActive ? 'status-active' : 'status-mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
+                    <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
                 </tr>`;
                 tbody.insertAdjacentHTML('beforeend', row);
             }
 
-            loader.style.display = 'none';
+            status.style.display = 'none';
             table.style.display = 'table';
+            search.style.display = 'block';
+
         } catch (e) {
             console.error(e);
-            loader.innerHTML = "❌ Error: Could not reach ORK. The Unit ID might be wrong or the proxy is down.";
+            status.innerHTML = "❌ Failed to reach ORK. Is the Unit ID correct?";
         }
     });
+
+    /**
+     * TABLE FILTER
+     */
+    function filterTable() {
+        const input = document.getElementById("searchBar").value.toUpperCase();
+        const rows = document.getElementById("reportBody").getElementsByTagName("tr");
+        for (let i = 0; i < rows.length; i++) {
+            const persona = rows[i].getElementsByTagName("td")[0];
+            const role = rows[i].getElementsByTagName("td")[1];
+            if (persona || role) {
+                const txtValue = (persona.textContent || persona.innerText) + (role.textContent || role.innerText);
+                rows[i].style.display = txtValue.toUpperCase().indexOf(input) > -1 ? "" : "none";
+            }
+        }
+    }
 </script>
 
 </body>
