@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORK Player Search</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; background-color: #f4f7f6; }
+        .container { max-width: 400px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; font-size: 1.5rem; }
+        
+        .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; }
+        input:focus { border-color: #007bff; }
+        button { padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+
+        .profile-card { border-top: 2px solid #eee; pt: 15px; display: none; }
+        .result-item { margin: 10px 0; font-size: 1.1rem; }
+        .label { font-weight: 600; color: #666; display: block; font-size: 0.8rem; text-transform: uppercase; }
+        .error { color: #d9534f; font-size: 0.9rem; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Player Search</h2>
+    
+    <div class="search-box">
+        <input type="number" id="playerIdInput" placeholder="Enter Player ID (e.g. 43232)">
+        <button id="searchBtn" onclick="handleSearch()">Search</button>
+    </div>
+
+    <div id="errorMessage" class="error"></div>
+
+    <div class="profile-card" id="player-info">
+        <div class="result-item">
+            <span class="label">Persona</span>
+            <span id="persona">--</span>
+        </div>
+        <div class="result-item">
+            <span class="label">Park</span>
+            <span id="park">--</span>
+        </div>
+        <div class="result-item">
+            <span class="label">Kingdom</span>
+            <span id="kingdom">--</span>
+        </div>
+    </div>
+</div>
+
+<script src="https://library.amtgard.com/jsork.js"></script>
+
+<script>
+async function handleSearch() {
+    const input = document.getElementById('playerIdInput');
+    const btn = document.getElementById('searchBtn');
+    const errorEl = document.getElementById('errorMessage');
+    const infoEl = document.getElementById('player-info');
+    
+    const id = input.value.trim();
+    if (!id) return;
+
+    // Reset UI
+    errorEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    try {
+        // Attempt to get the player summary
+        const player = await jsork.player.getPlayerSummary(id);
+        
+        // DEBUG: Log the actual object to see what's inside
+        console.log("ORK Response for ID " + id + ":", player);
+
+        // Check for common ORK "not found" indicators
+        if (!player || player.Status === "Error" || !player.Persona) {
+            throw new Error("ID not found in ORK");
+        }
+
+        // Update the page with the data
+        document.getElementById('persona').textContent = player.Persona;
+        document.getElementById('park').textContent = player.ParkName;
+        document.getElementById('kingdom').textContent = player.KingdomName;
+
+        infoEl.style.display = 'block';
+    } catch (err) {
+        console.error("Search failed:", err);
+        infoEl.style.display = 'none';
+        errorEl.textContent = "Error: " + (err.message || "Could not retrieve data");
+        errorEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Search';
+    }
+}
+    // Allow "Enter" key to trigger search
+    document.getElementById('playerIdInput').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') handleSearch();
+    });
+</script>
+
+</body>
+</html>
