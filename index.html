@@ -1,4 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amtgard Unit Auditor</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); padding: 20px; margin: 0; }
+        .container { max-width: 900px; margin: 40px auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        h1 { color: var(--primary); margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: 1.8rem; }
+        .controls { display: flex; gap: 10px; margin: 25px 0; }
+        input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; outline: none; }
+        input:focus { border-color: var(--primary); }
+        button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #27ae60; transform: translateY(-1px); }
+        #status { color: #f1c40f; margin-bottom: 15px; display: none; padding: 15px; border-left: 4px solid #f1c40f; background: rgba(241, 196, 15, 0.1); font-style: italic; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 10px; }
+        th, td { padding: 14px; text-align: left; border-bottom: 1px solid #383838; }
+        th { background: #333; color: var(--primary); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; }
+        .active { color: var(--primary); font-weight: bold; }
+        .mia { color: #e74c3c; }
+        tr:hover { background: #2d2d2d; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>⚔️ Amtgard Unit Auditor</h1>
+    <p style="color: #888;">Enter your Unit ID to generate a real-time activity report.</p>
+    
+    <div class="controls">
+        <input type="number" id="unitId" placeholder="Unit ID (e.g., 47)">
+        <button id="runBtn">Generate Roster</button>
+    </div>
+
+    <div id="status">📡 Establishing connection via Google Proxy...</div>
+
+    <div class="table-container">
+        <table id="reportTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Persona</th>
+                    <th>Unit Role</th>
+                    <th>Credits</th>
+                    <th>Last Seen</th>
+                    <th>90-Day Status</th>
+                </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+        </table>
+    </div>
+</div>
+
 <script>
+    // --- CONFIGURATION ---
     https://script.google.com/macros/s/AKfycbyiqB5ORyCjLxKQwvMVd21GcSolpJOrYHYX63cg6AGfEoC7xQpWNgXli0-mnzy8e_Qj/exec
     const PROXY_URL = "YOUR_GOOGLE_SCRIPT_URL_HERE";
 
@@ -7,6 +64,7 @@
         const finalUrl = `${PROXY_URL}?url=${encodeURIComponent(orkUrl)}`;
 
         const response = await fetch(finalUrl);
+        if (!response.ok) throw new Error("Google Proxy is not responding.");
         return await response.json();
     }
 
@@ -17,41 +75,55 @@
         const table = document.getElementById('reportTable');
 
         if (!id) return alert("Please enter a Unit ID.");
+        if (PROXY_URL.includes("YOUR_GOOGLE_SCRIPT")) return alert("You must paste your Google Script URL into the code first!");
         
         status.style.display = 'block';
-        status.innerText = "📡 Using Private Bridge to ORK... (This is much more reliable)";
+        status.innerText = "📡 Authenticating with ORK and fetching roster...";
         table.style.display = 'none';
         tbody.innerHTML = '';
 
         try {
+            // STEP 1: Get Roster
             const rosterData = await orkCall("Unit/GetUnitRoster", `&request[UnitId]=${id}`);
-            if (!rosterData.Roster) throw new Error("Unit not found.");
+            if (!rosterData || !rosterData.Roster || rosterData.Roster.length === 0) {
+                throw new Error("No members found. Check the Unit ID.");
+            }
 
-            for (let m of rosterData.Roster) {
+            const members = rosterData.Roster;
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+            // STEP 2: Loop Members
+            for (let m of members) {
                 try {
                     const attData = await orkCall("Player/GetAttendance", `&request[MundaneId]=${m.MundaneId}`);
                     const attendance = attData.Attendance || [];
-                    const ninetyDaysAgo = new Date();
-                    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
                     
                     const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
                     const isActive = attendance.some(a => new Date(a.Date) > ninetyDaysAgo);
 
-                    tbody.insertAdjacentHTML('beforeend', `
-                        <tr>
-                            <td><strong>${m.Persona}</strong></td>
-                            <td>${m.UnitRole || 'Member'}</td>
-                            <td>${attendance.length}</td>
-                            <td>${lastDate}</td>
-                            <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
-                        </tr>
-                    `);
-                } catch (e) { console.warn("Player skip"); }
+                    const row = `<tr>
+                        <td><strong>${m.Persona || 'Unknown'}</strong></td>
+                        <td>${m.UnitRole || 'Member'}</td>
+                        <td>${attendance.length}</td>
+                        <td>${lastDate}</td>
+                        <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
+                    </tr>`;
+                    tbody.insertAdjacentHTML('beforeend', row);
+                } catch (err) {
+                    console.warn("Skipping player due to ORK record error.");
+                }
             }
+
             status.style.display = 'none';
             table.style.display = 'table';
+
         } catch (e) {
-            status.innerHTML = `❌ Error: ${e.message}. Did you set the Google Script to 'Anyone' access?`;
+            console.error(e);
+            status.innerHTML = `❌ <strong>Error:</strong> ${e.message}`;
         }
     });
 </script>
+
+</body>
+</html>
