@@ -2,91 +2,112 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORK Player Lookup</title>
+    <title>Amtgard Unit Auditor (Bypass Version)</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; display: flex; justify-content: center; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; margin-top: 40px; }
-        .search-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
-        button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #ccc; }
-        .result { border-top: 1px solid #eee; padding-top: 20px; display: none; }
-        .label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: bold; display: block; }
-        .value { font-size: 18px; color: #333; display: block; margin-bottom: 12px; }
-        #status-msg { text-align: center; font-size: 13px; margin-top: 10px; color: #666; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #1a1a1a; color: #eee; }
+        .container { max-width: 900px; margin: auto; background: #252525; padding: 20px; border-radius: 10px; border: 1px solid #444; }
+        input { padding: 10px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; }
+        button { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2ecc71; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #2d2d2d; }
+        th, td { padding: 12px; border: 1px solid #444; text-align: left; }
+        th { background: #111; color: #27ae60; }
+        .loading { color: #f1c40f; display: none; margin: 15px 0; }
+        .status-active { color: #2ecc71; font-weight: bold; }
+        .status-mia { color: #e74c3c; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h3>ORK Player Search</h3>
-    <div class="search-group">
-        <input type="number" id="idInput" value="43232">
-        <button id="searchBtn" onclick="fetchPlayer()">Search</button>
-    </div>
+<div class="container">
+    <h2>Unit Roster & Attendance Auditor</h2>
+    <p>Enter the <strong>Unit ID</strong> (e.g., 52815) to pull live data from the ORK:</p>
     
-    <div id="status-msg">Ready.</div>
+    <input type="number" id="unitId" placeholder="Unit ID">
+    <button id="runBtn">Generate Report</button>
 
-    <div id="resultBox" class="result">
-        <span class="label">Persona</span>
-        <span id="persona" class="value"></span>
-        <span class="label">Park</span>
-        <span id="park" class="value"></span>
-        <span class="label">Kingdom</span>
-        <span id="kingdom" class="value"></span>
-    </div>
+    <div id="loader" class="loading">📡 Connecting to ORK via Proxy... (Large units may take 30s)</div>
+
+    <table id="reportTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>Persona</th>
+                <th>Role</th>
+                <th>90-Day Credits</th>
+                <th>Last Seen</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="reportBody"></tbody>
+    </table>
 </div>
 
 <script>
-    function fetchPlayer() {
-        const id = $('#idInput').val();
-        const $status = $('#status-msg');
-        const $btn = $('#searchBtn');
-        const $result = $('#resultBox');
+    // --- THE CORS BYPASS SCRIPT ---
+    // We override the native fetch to wrap ORK requests in a proxy
+    const originalFetch = window.fetch;
+    window.fetch = function() {
+        let url = arguments[0];
+        if (typeof url === 'string' && url.includes('amtgard.com')) {
+            arguments[0] = "https://corsproxy.io/?url=" + encodeURIComponent(url);
+        }
+        return originalFetch.apply(this, arguments);
+    };
 
-        $result.hide();
-        $btn.prop('disabled', true);
-        $status.text("Requesting via JSONP...").css('color', '#007bff');
-
-        // We use jQuery's AJAX with 'jsonp' datatype. 
-        // This tells the ORK to wrap the response in a function call, 
-        // which the browser accepts as a standard script, bypassing CORS.
-        $.ajax({
-            url: "https://ork.amtgard.com/orkinterface/api/index.php",
-            dataType: "jsonp",
-            data: {
-                call: "Player/GetPlayerSummary",
-                request: { MundaneId: id }
-            },
-            success: function(data) {
-                if (data && data.Status && data.Status.Status === 0) {
-                    const p = data.Player;
-                    $('#persona').text(p.Persona || "No Persona");
-                    $('#park').text(p.ParkName || "No Park");
-                    $('#kingdom').text(p.KingdomName || "No Kingdom");
-                    
-                    $status.hide();
-                    $result.show();
-                } else {
-                    $status.text("Error: Player ID not found.").css('color', 'red').show();
-                }
-            },
-            error: function(xhr, status, error) {
-                $status.text("Security Block: The ORK is refusing connections from GitHub.").css('color', 'red').show();
-                console.error("Error Detail:", error);
-            },
-            complete: function() {
-                $btn.prop('disabled', false);
-            }
+    // --- LOAD JSORK DYNAMICALLY ---
+    const loadJsork = () => {
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = "https://cdn.jsdelivr.net/gh/Deitrick/jsork/jsork.js";
+            script.onload = () => resolve();
+            document.head.appendChild(script);
         });
-    }
+    };
 
-    // Support Enter key
-    $('#idInput').on('keypress', function(e) {
-        if (e.which === 13) fetchPlayer();
+    document.getElementById('runBtn').addEventListener('click', async () => {
+        const id = document.getElementById('unitId').value;
+        const loader = document.getElementById('loader');
+        const tbody = document.getElementById('reportBody');
+        const table = document.getElementById('reportTable');
+
+        if (!id) return alert("Please enter a Unit ID");
+
+        loader.style.display = 'block';
+        table.style.display = 'none';
+        tbody.innerHTML = '';
+
+        try {
+            await loadJsork(); // Ensure jsork is ready
+            
+            const members = await jsork.unit.getUnitPlayers(id);
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+            for (let m of members) {
+                const attendance = await jsork.player.getAttendance(m.MundaneId);
+                const recent = attendance.filter(a => new Date(a.Date) > ninetyDaysAgo);
+                const lastDate = attendance.length > 0 ? attendance[0].Date : "Never";
+                const isActive = recent.length > 0;
+
+                const row = `<tr>
+                    <td><strong>${m.Persona}</strong></td>
+                    <td>${m.UnitRole || 'Member'}</td>
+                    <td>${recent.length}</td>
+                    <td>${lastDate}</td>
+                    <td class="${isActive ? 'status-active' : 'status-mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
+                </tr>`;
+                tbody.insertAdjacentHTML('beforeend', row);
+            }
+
+            loader.style.display = 'none';
+            table.style.display = 'table';
+        } catch (e) {
+            console.error(e);
+            loader.innerHTML = "❌ Error: Could not reach ORK. The Unit ID might be wrong or the proxy is down.";
+        }
     });
 </script>
+
 </body>
 </html>
