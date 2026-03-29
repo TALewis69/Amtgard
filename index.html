@@ -3,20 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amtgard Player Lookup</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
+    <title>ORK Debugger</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background-color: #f4f7f6; display: flex; justify-content: center; }
-        .container { max-width: 400px; width: 100%; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-top: 50px; }
-        h2 { margin-top: 0; text-align: center; color: #2c3e50; }
-        .search-box { display: flex; gap: 8px; margin: 20px 0; }
-        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; }
-        button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        #status { font-size: 0.9rem; text-align: center; margin-bottom: 10px; color: #666; font-weight: bold; }
-        .info-card { background: #fafafa; border: 1px solid #eee; padding: 20px; border-radius: 10px; display: none; }
-        .label { font-size: 0.7rem; text-transform: uppercase; color: #95a5a6; font-weight: bold; display: block; margin-top: 12px; }
-        .value { font-size: 1.1rem; color: #2c3e50; display: block; font-weight: 500; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 40px; background-color: #f0f2f5; color: #333; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        
+        .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 12px; border: 2px solid #e1e4e8; border-radius: 8px; font-size: 16px; }
+        button { padding: 12px 20px; background: #2ea44f; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2c974b; }
+        button:disabled { background: #94d3a2; }
+
+        .profile-card { border-top: 2px solid #eee; padding-top: 20px; display: none; }
+        .result-item { margin-bottom: 15px; }
+        .label { font-weight: 700; color: #6a737d; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; display: block; }
+        .value { font-size: 18px; color: #24292e; }
+
+        /* Debug Styles */
+        #debug-container { margin-top: 30px; border-top: 1px dashed #ccc; padding-top: 15px; }
+        #debug-header { font-size: 12px; color: #999; cursor: pointer; display: flex; justify-content: space-between; }
+        #raw-output { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap; display: none; margin-top: 10px; }
+        .error-msg { color: #d73a49; background: #ffeef0; padding: 10px; border-radius: 6px; margin-bottom: 20px; display: none; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -25,67 +32,94 @@
     <h2>ORK Player Lookup</h2>
     
     <div class="search-box">
-        <input type="number" id="playerID" value="43232">
-        <button id="searchBtn" onclick="doLookup()">Search</button>
+        <input type="number" id="playerIdInput" placeholder="Enter Player ID (43232)" value="43232">
+        <button id="searchBtn" onclick="runDebugSearch()">Fetch Data</button>
     </div>
 
-    <div id="status">Ready</div>
+    <div id="errorMessage" class="error-msg"></div>
 
-    <div id="output" class="info-card">
-        <span class="label">Persona</span>
-        <span id="p-name" class="value"></span>
-        <span class="label">Park</span>
-        <span id="p-park" class="value"></span>
-        <span class="label">Kingdom</span>
-        <span id="p-kingdom" class="value"></span>
+    <div class="profile-card" id="player-info">
+        <div class="result-item">
+            <span class="label">Persona</span>
+            <span id="persona" class="value"></span>
+        </div>
+        <div class="result-item">
+            <span class="label">Park / Kingdom</span>
+            <span id="location" class="value"></span>
+        </div>
+    </div>
+
+    <div id="debug-container">
+        <div id="debug-header" onclick="toggleDebug()">
+            <span>[DEBUG] Raw JSON Response</span>
+            <span id="toggle-icon">展开 +</span>
+        </div>
+        <pre id="raw-output">No data yet. Perform a search to see the raw API response.</pre>
     </div>
 </div>
 
+<script src="https://library.amtgard.com/jsork.js"></script>
+
 <script>
-    // DIRECT API CALL LOGIC (Bypasses external jsork.js file)
-    async function fetchFromORK(id) {
-        const url = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data && data.Status && data.Status.Status === 0) {
-            return data.Player;
-        } else {
-            throw new Error("Player not found");
-        }
+    function toggleDebug() {
+        const out = document.getElementById('raw-output');
+        const icon = document.getElementById('toggle-icon');
+        const isHidden = out.style.display === 'none' || out.style.display === '';
+        out.style.display = isHidden ? 'block' : 'none';
+        icon.textContent = isHidden ? '收起 -' : '展开 +';
     }
 
-    async function doLookup() {
-        const id = document.getElementById('playerID').value;
-        const out = document.getElementById('output');
-        const status = document.getElementById('status');
+    async function runDebugSearch() {
+        const input = document.getElementById('playerIdInput');
         const btn = document.getElementById('searchBtn');
+        const errorEl = document.getElementById('errorMessage');
+        const infoEl = document.getElementById('player-info');
+        const debugOut = document.getElementById('raw-output');
+        
+        const id = input.value.trim();
+        if (!id) return;
 
-        out.style.display = 'none';
-        status.style.display = 'block';
-        status.textContent = "Connecting to ORK...";
-        status.style.color = "#007bff";
+        // UI Prep
+        errorEl.style.display = 'none';
+        infoEl.style.display = 'none';
         btn.disabled = true;
+        btn.textContent = '...';
+        debugOut.textContent = "Fetching from ORK...";
 
         try {
-            const player = await fetchFromORK(id);
+            // Using the library
+            const player = await jsork.player.getPlayerSummary(id);
             
-            document.getElementById('p-name').textContent = player.Persona;
-            document.getElementById('p-park').textContent = player.ParkName || "Unknown Park";
-            document.getElementById('p-kingdom').textContent = player.KingdomName || "Unknown Kingdom";
+            // Log the RAW data to the debug window
+            debugOut.textContent = JSON.stringify(player, null, 2);
+
+            // Validation logic
+            if (!player || Object.keys(player).length === 0) {
+                throw new Error("Empty response from ORK.");
+            }
+            if (player.Status && player.Status.Status === 1) {
+                throw new Error("ORK returned an error: " + (player.Status.ErrorDetail || "Unknown"));
+            }
+
+            // Populate UI
+            document.getElementById('persona').textContent = player.Persona || "No Persona Set";
+            document.getElementById('location').textContent = `${player.ParkName} (${player.KingdomName})`;
             
-            status.style.display = 'none';
-            out.style.display = 'block';
+            infoEl.style.display = 'block';
+
         } catch (err) {
-            status.textContent = "Error: " + err.message;
-            status.style.color = "#dc3545";
+            errorEl.textContent = err.message;
+            errorEl.style.display = 'block';
+            debugOut.textContent = "ERROR: " + err.message;
         } finally {
             btn.disabled = false;
+            btn.textContent = 'Fetch Data';
         }
     }
 
-    document.getElementById('playerID').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') doLookup();
+    // Enter key support
+    document.getElementById('playerIdInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') runDebugSearch();
     });
 </script>
 
