@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORK Player Lookup - Deep Search</title>
+    <title>ORK Player Lookup</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="jsork.js"></script>
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 40px; background-color: #f8f9fa; color: #333; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 40px; background-color: #f8f9fa; }
         .container { max-width: 450px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
         .search-group { display: flex; gap: 10px; margin-bottom: 20px; }
         input { flex: 1; padding: 12px; border: 1px solid #ced4da; border-radius: 8px; font-size: 16px; }
         button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #0056b3; }
         
         .info-card { background: #fdfdfd; border: 1px solid #eee; padding: 20px; border-radius: 10px; display: none; }
         .label { font-size: 11px; text-transform: uppercase; color: #95a5a6; font-weight: bold; display: block; margin-top: 12px; }
@@ -28,7 +27,7 @@
     <h2>ORK Player Lookup</h2>
     
     <div class="search-group">
-        <input type="number" id="playerID" value="43232" placeholder="Player ID">
+        <input type="number" id="playerID" value="43232">
         <button id="searchBtn" onclick="lookup()">Search</button>
     </div>
 
@@ -50,74 +49,65 @@
 </div>
 
 <script>
-async function lookup() {
-    const id = document.getElementById('playerID').value;
-    const out = document.getElementById('output');
-    const status = document.getElementById('status-msg');
-    const btn = document.getElementById('searchBtn');
+    async function lookup() {
+        const id = document.getElementById('playerID').value;
+        const out = document.getElementById('output');
+        const status = document.getElementById('status-msg');
+        const btn = document.getElementById('searchBtn');
 
-    // UI Reset
-    out.style.display = 'none';
-    status.style.display = 'block';
-    status.textContent = "Fetching player data...";
-    btn.disabled = true;
+        out.style.display = 'none';
+        status.style.display = 'block';
+        status.textContent = "Fetching player data...";
+        btn.disabled = true;
 
-    if (typeof jsork === 'undefined') {
-        status.textContent = "Error: jsork.js not found.";
-        btn.disabled = false;
-        return;
-    }
-
-    try {
-        // 1. Find the Player Lookup Function
-        const getPlayer = jsork.player.getPlayerSummary || jsork.player.getInfo;
-        const player = await getPlayer(id);
-        
-        if (!player) throw new Error("Player not found.");
-
-        // Populate basic info
-        document.getElementById('p-name').textContent = player.Persona || "No Persona";
-        document.getElementById('p-attendance').textContent = player.AttendanceCount || player.TotalAttendance || "0";
-        out.style.display = 'block';
-
-        // 2. Resolve Park Name (Try nested first, then global)
-        if (player.ParkName) {
-            document.getElementById('p-park').textContent = player.ParkName;
-        } else if (player.ParkId) {
-            const getParkFunc = (jsork.park && jsork.park.getPark) || jsork.getPark;
-            if (getParkFunc) {
-                const parkData = await getParkFunc(player.ParkId);
-                document.getElementById('p-park').textContent = parkData.Name || "Park " + player.ParkId;
-            } else {
-                document.getElementById('p-park').textContent = "Park ID: " + player.ParkId;
-            }
+        if (typeof jsork === 'undefined') {
+            status.textContent = "Error: jsork.js not found.";
+            btn.disabled = false;
+            return;
         }
 
-        // 3. Resolve Kingdom Name (Try nested first, then global)
-        if (player.KingdomName) {
-            document.getElementById('p-kingdom').textContent = player.KingdomName;
-        } else if (player.KingdomId) {
-            const getKingdomFunc = (jsork.kingdom && jsork.kingdom.getKingdom) || jsork.getKingdom;
-            if (getKingdomFunc) {
-                const kingdomData = await getKingdomFunc(player.KingdomId);
-                document.getElementById('p-kingdom').textContent = kingdomData.Name || "Kingdom " + player.KingdomId;
-            } else {
-                document.getElementById('p-kingdom').textContent = "Kingdom ID: " + player.KingdomId;
+        try {
+            const getPlayer = jsork.player.getPlayerSummary || jsork.player.getInfo;
+            const player = await getPlayer(id);
+            
+            if (!player) throw new Error("Player not found.");
+
+            document.getElementById('p-name').textContent = player.Persona || "No Persona";
+            document.getElementById('p-attendance').textContent = player.AttendanceCount || player.TotalAttendance || "0";
+            out.style.display = 'block';
+
+            // Resolve Park Name
+            if (player.ParkName) {
+                document.getElementById('p-park').textContent = player.ParkName;
+            } else if (player.ParkId) {
+                const getPark = (jsork.park && jsork.park.getPark) || jsork.getPark;
+                if (getPark) {
+                    const park = await getPark(player.ParkId);
+                    document.getElementById('p-park').textContent = park.Name || "Park " + player.ParkId;
+                }
             }
+
+            // Resolve Kingdom Name
+            if (player.KingdomName) {
+                document.getElementById('p-kingdom').textContent = player.KingdomName;
+            } else if (player.KingdomId) {
+                const getKingdom = (jsork.kingdom && jsork.kingdom.getKingdom) || jsork.getKingdom;
+                if (getKingdom) {
+                    const kingdom = await getKingdom(player.KingdomId);
+                    document.getElementById('p-kingdom').textContent = kingdom.Name || "Kingdom " + player.KingdomId;
+                }
+            }
+
+            status.style.display = 'none';
+
+        } catch (err) {
+            status.style.background = "#f8d7da";
+            status.style.color = "#721c24";
+            status.textContent = "Error: " + err.message;
+        } finally {
+            btn.disabled = false;
         }
-
-        status.style.display = 'none';
-
-    } catch (err) {
-        status.style.background = "#f8d7da";
-        status.style.color = "#721c24";
-        status.textContent = "Error: " + err.message;
-        console.error("Lookup Failed:", err);
-    } finally {
-        btn.disabled = false;
     }
-}
 </script>
-
 </body>
 </html>
