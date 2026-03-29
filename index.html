@@ -42,37 +42,42 @@
         const errorBox = document.getElementById('errorBox');
         const debugLog = document.getElementById('debug-log');
 
-        // Reset
+        // Reset UI
         resultBox.style.display = 'none';
         errorBox.style.display = 'none';
         debugLog.style.display = 'block';
-        debugLog.textContent = "Checking library...";
+        debugLog.textContent = "Connecting to Proxy...";
 
-        // Triple-check that jsork is actually loaded
-        if (typeof jsork === 'undefined') {
-            errorBox.textContent = "Error: jsork library failed to load. Check your internet connection or the script URL.";
-            errorBox.style.display = 'block';
-            return;
-        }
-
-        debugLog.textContent = "Fetching player " + id + "...";
+        // The Amtgard API URL
+        const targetUrl = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
+        
+        // The Proxy URL to bypass CORS/Security blocks
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
         try {
-            // The jsork library uses jQuery's $.getJSON internally, returning a promise.
-            const player = await jsork.player.getInfo(id);
+            const response = await fetch(proxyUrl);
+            const json = await response.json();
             
-            debugLog.textContent = "Raw Response: " + JSON.stringify(player, null, 2);
+            // The proxy wraps the real data inside a 'contents' string
+            const playerResponse = JSON.parse(json.contents);
+            
+            debugLog.textContent = "Data Received!";
 
-            if (player && player.Persona) {
-                document.getElementById('persona').textContent = player.Persona;
+            if (playerResponse && playerResponse.Status && playerResponse.Status.Status === 0) {
+                const player = playerResponse.Player;
+                
+                document.getElementById('persona').textContent = player.Persona || "No Persona";
                 document.getElementById('park').textContent = player.ParkName || "No Park Found";
+                
                 resultBox.style.display = 'block';
+                debugLog.style.display = 'none';
             } else {
-                throw new Error("Player data incomplete or ID not found.");
+                throw new Error("Player ID " + id + " not found.");
             }
         } catch (err) {
             errorBox.textContent = "Search failed: " + err.message;
             errorBox.style.display = 'block';
+            debugLog.textContent = "Error Log: " + err.message;
             console.error(err);
         }
     }
