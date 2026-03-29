@@ -46,22 +46,23 @@
 <script>
     // MAKE SURE THIS IS YOUR NEW DEPLOYMENT URL
     var PROXY_URL = "https://script.google.com/macros/s/AKfycbyiqB5ORyCjLxKQwvMVd21GcSolpJOrYHYX63cg6AGfEoC7xQpWNgXli0-mnzy8e_Qj/exec";
-
+    
     function orkCall(callPath, params, callback) {
         var orkUrl = "https://ork.amtgard.com/orkinterface/api/api.php?call=" + callPath + params + "&ts=" + Date.now();
+        // We use the 'url' parameter that your doGet function expects
         var finalUrl = PROXY_URL + "?url=" + encodeURIComponent(orkUrl);
 
-        // Using jQuery ajax as it handles redirects better for Google Scripts
         $.ajax({
             url: finalUrl,
             method: 'GET',
-            dataType: 'json',
-            success: function(data) {
+            success: function(response) {
+                // Sometimes Google returns the data as a string, sometimes as an object
+                var data = (typeof response === 'string') ? JSON.parse(response) : response;
                 callback(data);
             },
             error: function(xhr) {
                 console.error("Proxy Error:", xhr);
-                document.getElementById('status').innerHTML = "❌ Google Proxy Error (403). Check your Deployment 'Who has access' setting.";
+                document.getElementById('status').innerHTML = "❌ Connection Failed. Make sure the Web App is deployed as 'Anyone'.";
             }
         });
     }
