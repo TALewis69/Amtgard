@@ -42,11 +42,13 @@
 </div>
 
 <script>
-    // DIRECT API CALL LOGIC (Bypasses external jsork.js file)
     async function fetchFromORK(id) {
-        const url = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
-        const response = await fetch(url);
-        const data = await response.json();
+        const targetUrl = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+        const response = await fetch(proxyUrl);
+        const json = await response.json();
+        const data = JSON.parse(json.contents);
         
         if (data && data.Status && data.Status.Status === 0) {
             return data.Player;
@@ -63,13 +65,11 @@
 
         out.style.display = 'none';
         status.style.display = 'block';
-        status.textContent = "Connecting to ORK...";
-        status.style.color = "#007bff";
+        status.textContent = "Connecting through Proxy...";
         btn.disabled = true;
 
         try {
             const player = await fetchFromORK(id);
-            
             document.getElementById('p-name').textContent = player.Persona;
             document.getElementById('p-park').textContent = player.ParkName || "Unknown Park";
             document.getElementById('p-kingdom').textContent = player.KingdomName || "Unknown Kingdom";
@@ -83,10 +83,6 @@
             btn.disabled = false;
         }
     }
-
-    document.getElementById('playerID').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') doLookup();
-    });
 </script>
 
 </body>
