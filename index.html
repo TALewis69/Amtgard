@@ -3,84 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORK Player Lookup</title>
+    <title>Amtgard ORK Search</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    
-    <script src="https://kenwalker.github.io/jsork/jsork.js"></script>
 
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f9f9f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
-        input { width: 70%; padding: 8px; margin-bottom: 10px; }
-        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-        .result { margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; display: none; }
-        .error { color: red; font-size: 0.9em; margin-top: 10px; display: none; }
-        #debug-log { background: #333; color: #0f0; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 20px; white-space: pre-wrap; display: none; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; display: flex; justify-content: center; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; margin-top: 40px; }
+        h3 { margin-top: 0; color: #1c1e21; text-align: center; }
+        .search-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+        button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; }
+        
+        .result { border-top: 1px solid #eee; padding-top: 20px; display: none; }
+        .label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: bold; display: block; }
+        .value { font-size: 18px; color: #333; display: block; margin-bottom: 12px; }
+        #status-msg { text-align: center; font-size: 14px; margin-top: 10px; color: #666; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h3>Amtgard Player Search</h3>
-    <input type="number" id="idInput" value="43232">
-    <button onclick="fetchPlayer()">Search</button>
+    <h3>ORK Player Search</h3>
+    <div class="search-group">
+        <input type="number" id="idInput" value="43232">
+        <button id="searchBtn" onclick="fetchPlayer()">Search</button>
+    </div>
     
-    <div id="errorBox" class="error"></div>
+    <div id="status-msg">Enter a Player ID to begin.</div>
 
     <div id="resultBox" class="result">
-        <p><strong>Persona:</strong> <span id="persona"></span></p>
-        <p><strong>Park:</strong> <span id="park"></span></p>
-    </div>
+        <span class="label">Persona</span>
+        <span id="persona" class="value"></span>
 
-    <div id="debug-log"></div>
+        <span class="label">Park</span>
+        <span id="park" class="value"></span>
+
+        <span class="label">Kingdom</span>
+        <span id="kingdom" class="value"></span>
+    </div>
 </div>
 
 <script>
     async function fetchPlayer() {
         const id = document.getElementById('idInput').value;
         const resultBox = document.getElementById('resultBox');
-        const errorBox = document.getElementById('errorBox');
-        const debugLog = document.getElementById('debug-log');
+        const status = document.getElementById('status-msg');
+        const btn = document.getElementById('searchBtn');
 
         // Reset UI
         resultBox.style.display = 'none';
-        errorBox.style.display = 'none';
-        debugLog.style.display = 'block';
-        debugLog.textContent = "Connecting to Proxy...";
+        status.style.display = 'block';
+        status.textContent = "Bypassing CORS Security...";
+        status.style.color = "#007bff";
+        btn.disabled = true;
 
-        // The Amtgard API URL
-        const targetUrl = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
+        // 1. Define the Amtgard API Target
+        const orkApiUrl = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
         
-        // The Proxy URL to bypass CORS/Security blocks
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        // 2. Wrap it in the AllOrigins Proxy to prevent CORS blocks
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(orkApiUrl)}`;
 
         try {
             const response = await fetch(proxyUrl);
-            const json = await response.json();
+            if (!response.ok) throw new Error("Proxy server connection failed.");
             
-            // The proxy wraps the real data inside a 'contents' string
-            const playerResponse = JSON.parse(json.contents);
+            const wrapper = await response.json();
             
-            debugLog.textContent = "Data Received!";
+            // The proxy sends the actual data as a string in 'contents'
+            const data = JSON.parse(wrapper.contents);
 
-            if (playerResponse && playerResponse.Status && playerResponse.Status.Status === 0) {
-                const player = playerResponse.Player;
+            if (data && data.Status && data.Status.Status === 0) {
+                const p = data.Player;
+                document.getElementById('persona').textContent = p.Persona || "No Persona";
+                document.getElementById('park').textContent = p.ParkName || "Unknown Park";
+                document.getElementById('kingdom').textContent = p.KingdomName || "Unknown Kingdom";
                 
-                document.getElementById('persona').textContent = player.Persona || "No Persona";
-                document.getElementById('park').textContent = player.ParkName || "No Park Found";
-                
+                status.style.display = 'none';
                 resultBox.style.display = 'block';
-                debugLog.style.display = 'none';
             } else {
                 throw new Error("Player ID " + id + " not found.");
             }
         } catch (err) {
-            errorBox.textContent = "Search failed: " + err.message;
-            errorBox.style.display = 'block';
-            debugLog.textContent = "Error Log: " + err.message;
-            console.error(err);
+            status.textContent = "Error: " + err.message;
+            status.style.color = "#d93025";
+            console.error("Search Error:", err);
+        } finally {
+            btn.disabled = false;
         }
     }
+
+    // Allow "Enter" key to trigger search
+    document.getElementById('idInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') fetchPlayer();
+    });
 </script>
 
 </body>
