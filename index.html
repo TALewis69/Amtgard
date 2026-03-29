@@ -7,8 +7,8 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
-        .container { max-width: 900px; margin: 40px auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+        .container { max-width: 900px; margin: 40px auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
         h1 { color: var(--primary); margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px; }
         .controls { display: flex; gap: 10px; margin: 25px 0; }
         input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; }
@@ -16,7 +16,7 @@
         #status { color: #f1c40f; margin-bottom: 15px; display: none; padding: 15px; border-left: 4px solid #f1c40f; background: rgba(241, 196, 15, 0.1); }
         table { width: 100%; border-collapse: collapse; background: #252525; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #383838; }
-        th { background: #333; color: var(--primary); text-transform: uppercase; font-size: 0.75rem; }
+        th { background: #333; color: var(--primary); font-size: 0.8rem; }
         .active { color: var(--primary); font-weight: bold; }
         .mia { color: #e74c3c; }
     </style>
@@ -45,72 +45,89 @@
 </div>
 
 <script>
-    // Using 'var' for maximum compatibility to avoid 'const' syntax errors
+    /* Using 'var' and old-school string concatenation to 
+       bypass 'Unexpected token const' errors in legacy environments.
+    */
     var PROXY_URL = "https://script.google.com/macros/s/AKfycbyiqB5ORyCjLxKQwvMVd21GcSolpJOrYHYX63cg6AGfEoC7xQpWNgXli0-mnzy8e_Qj/exec";
 
-    async function orkCall(callPath, params) {
+    function orkCall(callPath, params) {
         var queryParams = params || "";
         var orkUrl = "https://ork.amtgard.com/orkinterface/api/api.php?call=" + callPath + queryParams + "&ts=" + Date.now();
         var finalUrl = PROXY_URL + "?url=" + encodeURIComponent(orkUrl);
 
-        var response = await fetch(finalUrl);
-        return await response.json();
+        return fetch(finalUrl).then(function(response) {
+            return response.json();
+        });
     }
 
-    document.getElementById('runBtn').addEventListener('click', async function() {
+    document.getElementById('runBtn').addEventListener('click', function() {
         var id = document.getElementById('unitId').value;
         var status = document.getElementById('status');
         var tbody = document.getElementById('reportBody');
         var table = document.getElementById('reportTable');
 
-        if (!id) return alert("Please enter a Unit ID.");
-        if (PROXY_URL.indexOf("YOUR_GOOGLE_SCRIPT") !== -1) return alert("Paste your Google Script URL into the code!");
+        if (!id) {
+            alert("Please enter a Unit ID.");
+            return;
+        }
         
         status.style.display = 'block';
-        status.innerText = "📡 Fetching roster data...";
+        status.innerText = "📡 Requesting roster data...";
         table.style.display = 'none';
         tbody.innerHTML = '';
 
-        try {
-            var rosterData = await orkCall("Unit/GetUnitRoster", "&request[UnitId]=" + id);
-            if (!rosterData || !rosterData.Roster) throw new Error("Unit not found.");
+        orkCall("Unit/GetUnitRoster", "&request[UnitId]=" + id)
+            .then(function(data) {
+                if (!data || !data.Roster) throw new Error("Unit not found.");
+                
+                var members = data.Roster;
+                var ninetyDaysAgo = new Date();
+                ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-            var members = rosterData.Roster;
-            var ninetyDaysAgo = new Date();
-            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-            for (var i = 0; i < members.length; i++) {
-                var m = members[i];
-                try {
-                    var attData = await orkCall("Player/GetAttendance", "&request[MundaneId]=" + m.MundaneId);
-                    var attendance = attData.Attendance || [];
-                    var lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
-                    
-                    var isActive = false;
-                    for (var j = 0; j < attendance.length; j++) {
-                        if (new Date(attendance[j].Date) > ninetyDaysAgo) {
-                            isActive = true;
-                            break;
-                        }
+                // We use a recursive function to process members one-by-one
+                // to avoid overloading the Google Proxy and keep things stable.
+                var processMember = function(index) {
+                    if (index >= members.length) {
+                        status.style.display = 'none';
+                        table.style.display = 'table';
+                        return;
                     }
 
-                    var row = '<tr>' +
-                        '<td><strong>' + (m.Persona || 'Unknown') + '</strong></td>' +
-                        '<td>' + (m.UnitRole || 'Member') + '</td>' +
-                        '<td>' + attendance.length + '</td>' +
-                        '<td>' + lastDate + '</td>' +
-                        '<td class="' + (isActive ? 'active' : 'mia') + '">' + (isActive ? 'ACTIVE' : 'MIA') + '</td>' +
-                    '</tr>';
-                    tbody.insertAdjacentHTML('beforeend', row);
-                } catch (err) {
-                    console.warn("Skipped a player.");
-                }
-            }
-            status.style.display = 'none';
-            table.style.display = 'table';
-        } catch (e) {
-            status.innerHTML = "❌ Error: " + e.message;
-        }
+                    var m = members[index];
+                    orkCall("Player/GetAttendance", "&request[MundaneId]=" + m.MundaneId)
+                        .then(function(attData) {
+                            var attendance = attData.Attendance || [];
+                            var lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
+                            
+                            var isActive = false;
+                            for (var i = 0; i < attendance.length; i++) {
+                                if (new Date(attendance[i].Date) > ninetyDaysAgo) {
+                                    isActive = true;
+                                    break;
+                                }
+                            }
+
+                            var row = '<tr>' +
+                                '<td><strong>' + (m.Persona || 'Unknown') + '</strong></td>' +
+                                '<td>' + (m.UnitRole || 'Member') + '</td>' +
+                                '<td>' + attendance.length + '</td>' +
+                                '<td>' + lastDate + '</td>' +
+                                '<td class="' + (isActive ? 'active' : 'mia') + '">' + (isActive ? 'ACTIVE' : 'MIA') + '</td>' +
+                            '</tr>';
+                            
+                            tbody.insertAdjacentHTML('beforeend', row);
+                            processMember(index + 1);
+                        })
+                        .catch(function() {
+                            processMember(index + 1);
+                        });
+                };
+
+                processMember(0);
+            })
+            .catch(function(err) {
+                status.innerHTML = "❌ Error: " + err.message;
+            });
     });
 </script>
 
