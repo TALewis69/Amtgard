@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amtgard Unit Activity Auditor</title>
+    <title>Amtgard Unit Auditor (Hybrid Bridge)</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
@@ -13,7 +13,7 @@
         .controls { display: flex; gap: 10px; margin: 20px 0; }
         input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; }
         button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; }
-        #status { color: #f1c40f; margin-bottom: 15px; display: none; font-style: italic; background: rgba(241, 196, 15, 0.1); padding: 15px; border-left: 4px solid #f1c40f; }
+        #status { color: #f1c40f; margin-bottom: 15px; display: none; padding: 15px; border-left: 4px solid #f1c40f; background: rgba(241, 196, 15, 0.1); }
         table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #383838; }
         th { background: #333; color: var(--primary); }
@@ -24,14 +24,12 @@
 <body>
 
 <div class="container">
-    <h1>⚔️ Unit Activity Auditor</h1>
+    <h1>⚔️ Unit Auditor</h1>
     <div class="controls">
         <input type="number" id="unitId" placeholder="Enter Unit ID (e.g., 47)">
         <button id="runBtn">Generate Report</button>
     </div>
-
-    <div id="status">📡 Establishing secure bridge...</div>
-
+    <div id="status">📡 Establishing Connection...</div>
     <table id="reportTable" style="display:none;">
         <thead>
             <tr>
@@ -39,7 +37,7 @@
                 <th>Role</th>
                 <th>Total Credits</th>
                 <th>Last Date</th>
-                <th>90-Day Status</th>
+                <th>Status</th>
             </tr>
         </thead>
         <tbody id="reportBody"></tbody>
@@ -47,20 +45,19 @@
 </div>
 
 <script>
-    // --- NO MORE corsproxy.io ---
-    // --- NO MORE GetUnitIndex ---
-
-    async function orkCall(callPath, params = "") {
-        // We use allorigins.win to bypass the 403 Forbidden error
-        const orkUrl = `https://ork.amtgard.com/orkinterface/api/api.php?call=${callPath}${params}&ts=${Date.now()}`;
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(orkUrl)}`;
-
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Proxy Error");
-        
-        const data = await response.json();
-        // The data comes back as a string in 'contents', we turn it back into an object
-        return JSON.parse(data.contents);
+    // Hybrid Proxy Logic
+    async function fetchWithRetry(orkUrl) {
+        // Attempt 1: AllOrigins (Wrapped)
+        try {
+            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(orkUrl)}`);
+            const json = await res.json();
+            return JSON.parse(json.contents);
+        } catch (e) {
+            console.warn("Primary Proxy failed, attempting backup...");
+            // Attempt 2: ThingProxy (A clean bypass bridge)
+            const res = await fetch(`https://thingproxy.freeboard.io/fetch/${orkUrl}`);
+            return await res.json();
+        }
     }
 
     document.getElementById('runBtn').addEventListener('click', async () => {
@@ -72,53 +69,44 @@
         if (!id) return alert("Please enter a Unit ID.");
         
         status.style.display = 'block';
-        status.innerText = "📡 Querying ORK Roster... (Please wait)";
+        status.innerText = "📡 Fetching Roster... This may take a minute for large units.";
         table.style.display = 'none';
         tbody.innerHTML = '';
 
         try {
-            // STEP 1: Get the Roster directly
-            const rosterData = await orkCall("Unit/GetUnitRoster", `&request[UnitId]=${id}`);
+            const rosterPath = `https://ork.amtgard.com/orkinterface/api/api.php?call=Unit/GetUnitRoster&request[UnitId]=${id}&ts=${Date.now()}`;
+            const data = await fetchWithRetry(rosterPath);
             
-            if (!rosterData || !rosterData.Roster || rosterData.Roster.length === 0) {
-                throw new Error("Unit not found or Roster is empty.");
-            }
+            if (!data.Roster || data.Roster.length === 0) throw new Error("No members found.");
 
-            const members = rosterData.Roster;
-            const ninetyDaysAgo = new Date();
-            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-            // STEP 2: Process Members
-            for (let m of members) {
+            for (let m of data.Roster) {
                 try {
-                    const attData = await orkCall("Player/GetAttendance", `&request[MundaneId]=${m.MundaneId}`);
+                    const attPath = `https://ork.amtgard.com/orkinterface/api/api.php?call=Player/GetAttendance&request[MundaneId]=${m.MundaneId}&ts=${Date.now()}`;
+                    const attData = await fetchWithRetry(attPath);
                     const attendance = attData.Attendance || [];
                     
-                    const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
+                    const ninetyDaysAgo = new Date();
+                    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
                     const isActive = attendance.some(a => new Date(a.Date) > ninetyDaysAgo);
+                    const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
 
-                    const row = `<tr>
-                        <td><strong>${m.Persona || 'Unknown'}</strong></td>
-                        <td>${m.UnitRole || 'Member'}</td>
-                        <td>${attendance.length}</td>
-                        <td>${lastDate}</td>
-                        <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
-                    </tr>`;
-                    tbody.insertAdjacentHTML('beforeend', row);
-                } catch (err) {
-                    console.warn("Skipping individual member data error.");
-                }
+                    tbody.insertAdjacentHTML('beforeend', `
+                        <tr>
+                            <td><strong>${m.Persona}</strong></td>
+                            <td>${m.UnitRole || 'Member'}</td>
+                            <td>${attendance.length}</td>
+                            <td>${lastDate}</td>
+                            <td class="${isActive ? 'active' : 'mia'}">${isActive ? 'ACTIVE' : 'MIA'}</td>
+                        </tr>
+                    `);
+                } catch (err) { console.error("Skipping player..."); }
             }
-
             status.style.display = 'none';
             table.style.display = 'table';
-
         } catch (e) {
-            console.error(e);
-            status.innerHTML = `❌ <strong>Error:</strong> ${e.message}`;
+            status.innerHTML = `❌ <strong>CORS Error:</strong> Proxies are currently overloaded. <br>Please wait 60 seconds and try again.`;
         }
     });
 </script>
-
 </body>
 </html>
