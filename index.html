@@ -3,23 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amtgard ORK Search</title>
+    <title>ORK Player Lookup</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; display: flex; justify-content: center; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; margin-top: 40px; }
-        h3 { margin-top: 0; color: #1c1e21; text-align: center; }
         .search-group { display: flex; gap: 10px; margin-bottom: 20px; }
         input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
         button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #0056b3; }
         button:disabled { background: #ccc; }
-        
         .result { border-top: 1px solid #eee; padding-top: 20px; display: none; }
         .label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: bold; display: block; }
         .value { font-size: 18px; color: #333; display: block; margin-bottom: 12px; }
-        #status-msg { text-align: center; font-size: 14px; margin-top: 10px; color: #666; }
+        #status-msg { text-align: center; font-size: 14px; margin-top: 10px; color: #666; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -31,15 +27,13 @@
         <button id="searchBtn" onclick="fetchPlayer()">Search</button>
     </div>
     
-    <div id="status-msg">Enter a Player ID to begin.</div>
+    <div id="status-msg">Ready.</div>
 
     <div id="resultBox" class="result">
         <span class="label">Persona</span>
         <span id="persona" class="value"></span>
-
         <span class="label">Park</span>
         <span id="park" class="value"></span>
-
         <span class="label">Kingdom</span>
         <span id="kingdom" class="value"></span>
     </div>
@@ -52,53 +46,10 @@
         const status = document.getElementById('status-msg');
         const btn = document.getElementById('searchBtn');
 
-        // Reset UI
         resultBox.style.display = 'none';
-        status.style.display = 'block';
-        status.textContent = "Bypassing CORS Security...";
-        status.style.color = "#007bff";
         btn.disabled = true;
+        status.textContent = "Requesting data via Proxy...";
+        status.style.color = "#007bff";
 
-        // 1. Define the Amtgard API Target
-        const orkApiUrl = `https://ork.amtgard.com/orkinterface/api/index.php?call=Player/GetPlayerSummary&request[MundaneId]=${id}`;
-        
-        // 2. Wrap it in the AllOrigins Proxy to prevent CORS blocks
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(orkApiUrl)}`;
-
-        try {
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error("Proxy server connection failed.");
-            
-            const wrapper = await response.json();
-            
-            // The proxy sends the actual data as a string in 'contents'
-            const data = JSON.parse(wrapper.contents);
-
-            if (data && data.Status && data.Status.Status === 0) {
-                const p = data.Player;
-                document.getElementById('persona').textContent = p.Persona || "No Persona";
-                document.getElementById('park').textContent = p.ParkName || "Unknown Park";
-                document.getElementById('kingdom').textContent = p.KingdomName || "Unknown Kingdom";
-                
-                status.style.display = 'none';
-                resultBox.style.display = 'block';
-            } else {
-                throw new Error("Player ID " + id + " not found.");
-            }
-        } catch (err) {
-            status.textContent = "Error: " + err.message;
-            status.style.color = "#d93025";
-            console.error("Search Error:", err);
-        } finally {
-            btn.disabled = false;
-        }
-    }
-
-    // Allow "Enter" key to trigger search
-    document.getElementById('idInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') fetchPlayer();
-    });
-</script>
-
-</body>
-</html>
+        // The Amtgard API URL
+        const
