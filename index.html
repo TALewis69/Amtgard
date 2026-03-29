@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amtgard Unit Auditor (Zero-External)</title>
+    <title>Amtgard Unit Auditor (GitHub Version)</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    
     <style>
         :root { --primary: #2ecc71; --bg: #121212; --card: #1e1e1e; --text: #eee; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
-        h1 { color: var(--primary); margin-top: 0; }
-        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        .container { max-width: 950px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 12px; border: 1px solid #333; }
+        h1 { color: var(--primary); margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .controls { display: flex; gap: 10px; margin: 20px 0; }
         input { flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #2c2c2c; color: white; }
         button { padding: 12px 24px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; }
-        #status { color: #f1c40f; margin-bottom: 15px; display: none; }
-        table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 20px; }
+        #status { color: #f1c40f; margin-bottom: 15px; display: none; font-style: italic; }
+        table { width: 100%; border-collapse: collapse; background: #252525; margin-top: 20px; font-size: 0.9em; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #383838; }
-        th { background: #333; color: var(--primary); font-size: 0.8rem; }
+        th { background: #333; color: var(--primary); }
         .active { color: var(--primary); font-weight: bold; }
         .mia { color: #e74c3c; }
     </style>
@@ -25,12 +24,13 @@
 <body>
 
 <div class="container">
-    <h1>⚔️ Unit Auditor</h1>
+    <h1>⚔️ Unit Activity Auditor</h1>
     <div class="controls">
-        <input type="number" id="unitId" placeholder="Enter Unit ID">
-        <button id="runBtn">Generate Report</button>
+        <input type="number" id="unitId" placeholder="Enter Unit ID from ORK URL (e.g., 52815)">
+        <button id="runBtn">Generate Roster</button>
     </div>
-    <div id="status">📡 Fetching data via Proxy...</div>
+    <div id="status">📡 Contacting the ORK...</div>
+    
     <table id="reportTable" style="display:none;">
         <thead>
             <tr>
@@ -38,7 +38,7 @@
                 <th>Role</th>
                 <th>Total Credits</th>
                 <th>Last Date</th>
-                <th>Status</th>
+                <th>90-Day Status</th>
             </tr>
         </thead>
         <tbody id="reportBody"></tbody>
@@ -49,12 +49,12 @@
     const PROXY = "https://corsproxy.io/?url=";
     const API_BASE = "https://ork.amtgard.com/orkinterface/api/api.php?call=";
 
-    // Direct API Helper (Replaces the need for jsork.js file)
+    // Direct fetch helper with Proxy
     async function orkCall(callPath, params = "") {
         const url = `${API_BASE}${callPath}${params}`;
         const response = await fetch(PROXY + encodeURIComponent(url));
-        const data = await response.json();
-        return data;
+        if (!response.ok) throw new Error("Network response was not ok");
+        return await response.json();
     }
 
     document.getElementById('runBtn').addEventListener('click', async () => {
@@ -63,29 +63,38 @@
         const tbody = document.getElementById('reportBody');
         const table = document.getElementById('reportTable');
 
-        if (!id) return;
+        if (!id) return alert("Please enter a Unit ID.");
+        
         status.style.display = 'block';
+        status.innerText = "📡 Searching for Unit and fetching Roster...";
         table.style.display = 'none';
         tbody.innerHTML = '';
 
         try {
-            // 1. Get Roster (Replaces jsork.unit.getUnitPlayers)
-            const unitData = await orkCall("Unit/GetUnitIndex", `&request[UnitId]=${id}`);
-            const members = unitData.Members;
+            // STEP 1: Get the Roster directly using Unit/GetUnitRoster
+            // This is the most reliable API call for Units
+            const rosterResponse = await orkCall("Unit/GetUnitRoster", `&request[UnitId]=${id}`);
+            
+            if (!rosterResponse || !rosterResponse.Roster || rosterResponse.Roster.length === 0) {
+                throw new Error("No members found for this Unit ID.");
+            }
+
+            const members = rosterResponse.Roster;
             const ninetyDaysAgo = new Date();
             ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
+            // STEP 2: Loop members for detailed attendance
             for (let m of members) {
-                // 2. Get Attendance (Replaces jsork.player.getAttendance)
+                // ORK API uses 'MundaneId' for player lookups
                 const attData = await orkCall("Player/GetAttendance", `&request[MundaneId]=${m.MundaneId}`);
                 const attendance = attData.Attendance || [];
                 
                 const recent = attendance.filter(a => new Date(a.Date) > ninetyDaysAgo);
-                const lastDate = attendance.length > 0 ? attendance[0].Date : "None";
+                const lastDate = attendance.length > 0 ? attendance[0].Date : "No Record";
                 const isActive = recent.length > 0;
 
                 const row = `<tr>
-                    <td><strong>${m.Persona}</strong></td>
+                    <td><strong>${m.Persona || 'Unknown'}</strong></td>
                     <td>${m.UnitRole || 'Member'}</td>
                     <td>${attendance.length}</td>
                     <td>${lastDate}</td>
@@ -98,7 +107,7 @@
             table.style.display = 'table';
         } catch (e) {
             console.error(e);
-            status.innerHTML = "❌ Connection Error. Check Unit ID.";
+            status.innerHTML = `❌ Error: ${e.message}. <br><small>Double check the ID in the ORK URL.</small>`;
         }
     });
 </script>
